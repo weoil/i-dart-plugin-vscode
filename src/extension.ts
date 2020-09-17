@@ -42,21 +42,15 @@ export function activate(context: vscode.ExtensionContext) {
       //   return;
       // }
       const newActionName = "ffff";
+      const outFile = await vscode.window.showQuickPick(["Reducer", "Effect"]);
+      if (!outFile) return;
+
       const upperActionName = newActionName.toUpperCase().trim();
 
       let newActionFile = actionFile.replace(
         /(enum [^}]*)}/g,
         `$1, ${newActionName}} `
       );
-
-      // newActionFile = actionFile.replace(
-      //   /(class [^}]*)}/g,
-      //   `$1\n
-      // 	static Action on${upperActionName}() {
-      // 		return const Action(${actionName}.${newActionName});
-      // 	}
-      // }`
-      // );
       let classIndex = newActionFile.indexOf("class");
       console.log(newActionFile.substr(classIndex), "----");
       let okIndex = findMatching(newActionFile.substr(classIndex), "{", "}");
@@ -70,6 +64,7 @@ export function activate(context: vscode.ExtensionContext) {
 `
       );
       writeFile(actionPath, newActionFile);
+
       console.log(newActionFile);
     }
   );
