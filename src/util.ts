@@ -32,6 +32,16 @@ export function toFirstUpper(str: string) {
   return str.charAt(0).toUpperCase() + str.substr(1);
 }
 
+export function useEditBuilder(
+  edit: vscode.TextEditor
+): Promise<vscode.TextEditorEdit> {
+  return new Promise((r) => {
+    edit.edit((b) => {
+      r(b);
+    });
+  });
+}
+
 export function getPosition(str: string, index: number) {
   let over = 0;
   let col = 0;

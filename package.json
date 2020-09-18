@@ -10,28 +10,20 @@
     "Other"
   ],
   "activationEvents": [
-    "*"
+    "onLanguage:dart"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "extension.helloWorld",
-        "title": "Hello World"
-      },
-      {
         "command": "extension.NewAction",
-        "title": "New Dart Action"
+        "title": "🎁 创建新Action - fish-redux"
       }
     ],
     "menus": {
       "editor/context": [
         {
           "command": "extension.NewAction",
-          "group": "1_modification"
-        },
-        {
-          "command": "extension.helloWorld",
           "group": "1_modification"
         }
       ]

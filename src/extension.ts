@@ -9,6 +9,7 @@ import {
   insertText,
   toFirstUpper,
   getPosition,
+  useEditBuilder,
 } from "./util";
 import { execSync } from "mz/child_process";
 // this method is called when your extension is activated
@@ -29,55 +30,48 @@ export function activate(context: vscode.ExtensionContext) {
       const effectPath = path.resolve(dirPath, "effect.dart");
       const actionPath = path.resolve(dirPath, "action.dart");
       const reducerPath = path.resolve(dirPath, "reducer.dart");
+      try {
+        let newActionName = await vscode.window.showInputBox({
+          password: false,
+          ignoreFocusOut: false,
+          placeHolder: "New Action Name",
+        });
+        if (!newActionName) {
+          return;
+        }
+        newActionName = newActionName.trim();
+        // const newActionName = "ffff";
+        const outFile = await vscode.window.showQuickPick([
+          "Reducer",
+          "Effect",
+        ]);
 
-      // let newActionName = await vscode.window.showInputBox({
-      //   password: false,
-      //   ignoreFocusOut: true,
-      //   placeHolder: "New Action Name",
-      // });
-      // if (!newActionName) {
-      //   return;
-      // }
-      // newActionName = newActionName.trim();
-      const newActionName = "ffff";
-      // const outFile = await vscode.window.showQuickPick(["Reducer", "Effect"]);
-      // if (!outFile) return;
-      // const outFile: "Reducer" | "Effect" = "Effect";
-      const baseName = await modifyAction(actionPath, newActionName);
-      // if ((outFile as any) === "Reducer") {
-      //   await modifyReducer(reducerPath, baseName, newActionName);
-      // } else if (outFile === "Effect") {
-      //   await modifyEffect(effectPath, baseName, newActionName);
-      // }
-      // execSync(`flutter format ${dirPath}`);
-    }
-  );
+        if (!outFile || (outFile !== "Reducer" && outFile !== "Effect")) return;
 
-  let disposable = vscode.commands.registerCommand(
-    "extension.helloWorld",
-    async (uri) => {
-      const doc = await vscode.workspace.openTextDocument(uri);
-      doc.save();
-      // The code you place here will be executed every time your command is executed
-      // Display a message box to the user
-      // vscode.window.showInformationMessage(
-      //   "Hello World from i_dart_plugin1111!"
-      // );
-      // const editor = vscode.window.activeTextEditor;
-      // const text = editor?.document.getText();
-      // console.log("text", text);
+        // const outFile: "Reducer" | "Effect" = "Effect";
+        const baseName = await modifyAction(actionPath, newActionName);
+        if ((outFile as any) === "Reducer") {
+          await modifyReducer(reducerPath, baseName, newActionName);
+        } else if (outFile === "Effect") {
+          await modifyEffect(effectPath, baseName, newActionName);
+        }
+      } catch (e) {
+        console.error(e);
+      }
     }
   );
   context.subscriptions.push(newAction);
-  context.subscriptions.push(disposable);
 }
 
 // this method is called when your extension is deactivated
 export function deactivate() {}
 
-async function modifyAction(src: string, newActionName: string) {
+async function modifyAction(
+  src: string,
+  newActionName: string
+): Promise<string> {
   const doc = await vscode.workspace.openTextDocument(src);
-  const file = doc.getText();
+  let file = doc.getText();
   const editor = await vscode.window.showTextDocument(doc);
 
   const actionName = /enum(.*)\{/.exec(file)?.[1].trim();
@@ -87,41 +81,32 @@ async function modifyAction(src: string, newActionName: string) {
   const baseName = actionName.replace("Action", "");
   const globalActinName = `${baseName}Action`;
   const upperActionName = toFirstUpper(newActionName);
-  // let newActionFile = file.replace(/(enum [^}]*)}/g, `$1, ${newActionName}} `);
-  let enumIndex = file.indexOf("enum ");
-  let pos = getPosition(file, file.indexOf("}", enumIndex) - 1);
-  editor.edit((editorBuilder) => {
-    editorBuilder.insert(pos, `,${newActionName}`);
-    vscode.commands.executeCommand(
-      "vscode.executeFormatDocumentProvider",
-      doc.uri
-    );
+  const actionCreatorText = `
+  static Action on${upperActionName}() {
+  return const Action(${globalActinName}.${newActionName});
+  }
+  `;
+  return new Promise((resolve) => {
+    editor.edit((builder) => {
+      let enumIndex = file.indexOf("enum ");
+      let lastIndex = file.indexOf("}", enumIndex);
+      const lastHasComma = file
+        .substring(enumIndex, lastIndex + 1)
+        .replace(/[ \n]/g, "")
+        .includes(",}");
+      let pos = getPosition(file, lastIndex - 1);
+      builder.insert(pos, `${lastHasComma ? "" : ","}${newActionName}`);
+      let classIndex = file.indexOf("class");
+      let okIndex = findMatching(file.substr(classIndex), "{", "}");
+      builder.insert(
+        getPosition(file, classIndex + okIndex - 1),
+        actionCreatorText
+      );
+      formatFile(doc.uri, editor).then(() => {
+        resolve(baseName);
+      });
+    });
   });
-  //   let classIndex = newActionFile.indexOf("class");
-  //   console.log(newActionFile.substr(classIndex), "----");
-  //   let okIndex = findMatching(newActionFile.substr(classIndex), "{", "}");
-  //   newActionFile = insertText(
-  //     newActionFile,
-  //     classIndex + okIndex,
-  //     `
-  // static Action on${upperActionName}() {
-  // return const Action(${globalActinName}.${newActionName});
-  // }
-  // `
-  //   );
-
-  // editor.edit((b) => {
-  //   b.replace(
-  //     new vscode.Range(new vscode.Position(0, 0), doc.eol),
-  //     newActionFile
-  //   );
-  //   vscode.commands.executeCommand(
-  //     "vscode.executeFormatDocumentProvider",
-  //     editor.document.uri
-  //   );
-  // });
-  // writeFile(src, newActionFile);
-  return baseName;
 }
 
 async function modifyReducer(
@@ -130,26 +115,35 @@ async function modifyReducer(
   newActionName: string
 ) {
   const doc = await vscode.workspace.openTextDocument(src);
-  await doc.save();
+  const editor = await vscode.window.showTextDocument(doc);
   const file = doc.getText();
   const globalActinName = `${baseName}Action`;
   const globalStateName = `${baseName}State`;
   const upperActionName = toFirstUpper(newActionName);
   const funcName = `_on${upperActionName}`;
-  let newFile = file.replace(
-    /(asReducer[^}]*)}/g,
-    `$1, ${globalActinName}.${newActionName}: ${funcName}} `
-  );
-  newFile = newFile.replace(/,[\r\n\t ]*,/g, ",");
-  newFile =
-    newFile +
-    `
+  const funcContent = `
   ${globalStateName} _on${upperActionName}(${globalStateName} state, Action action) {
     final ${globalStateName} newState = state.clone();
     return newState;
   }
 `;
-  writeFile(src, newFile);
+  editor.edit((builder) => {
+    let startIndex = file.indexOf("asReducer");
+    let lastIndex = file.indexOf("}", startIndex);
+    const lastHasComma = file
+      .substring(startIndex, lastIndex + 1)
+      .replace(/[ \n]/g, "")
+      .includes(",}");
+    let pos = getPosition(file, lastIndex - 1);
+    builder.insert(
+      pos,
+      `${
+        lastHasComma ? "" : ","
+      } ${globalActinName}.${newActionName}: ${funcName}`
+    );
+    builder.insert(new vscode.Position(doc.lineCount + 1, 0), funcContent);
+    formatFile(doc.uri, editor);
+  });
 }
 async function modifyEffect(
   src: string,
@@ -157,23 +151,63 @@ async function modifyEffect(
   newActionName: string
 ) {
   const doc = await vscode.workspace.openTextDocument(src);
-  await doc.save();
+  const editor = await vscode.window.showTextDocument(doc);
   const file = doc.getText();
   const globalActinName = `${baseName}Action`;
   const globalStateName = `${baseName}State`;
   const upperActionName = toFirstUpper(newActionName);
   const funcName = `_on${upperActionName}`;
-  let newFile = file.replace(
-    /(combineEffects[^}]*)}/g,
-    `$1, ${globalActinName}.${newActionName}: ${funcName}} `
-  );
-  newFile = newFile.replace(/,[\r\n\t ]*,/g, ",");
-  newFile =
-    newFile +
-    `
-    void ${funcName}(Action action, Context<${globalStateName}> ctx) {
-    }
-    
+  const funcContent = `
+  void ${funcName}(Action action, Context<${globalStateName}> ctx) {
+  }
+  
 `;
-  writeFile(src, newFile);
+  editor.edit((builder) => {
+    let startIndex = file.indexOf("combineEffects");
+    let lastIndex = file.indexOf("}", startIndex);
+    const lastHasComma = file
+      .substring(startIndex, lastIndex + 1)
+      .replace(/[ \n]/g, "")
+      .includes(",}");
+    let pos = getPosition(file, lastIndex - 1);
+    builder.insert(
+      pos,
+      `${
+        lastHasComma ? "" : ","
+      } ${globalActinName}.${newActionName}: ${funcName}`
+    );
+    builder.insert(new vscode.Position(doc.lineCount + 1, 0), funcContent);
+    formatFile(doc.uri, editor);
+  });
+}
+
+function formatFile(uri: vscode.Uri, editor: vscode.TextEditor) {
+  return new Promise((r) => {
+    vscode.commands
+      .executeCommand(
+        "vscode.executeFormatDocumentProvider",
+        uri,
+        new vscode.Position(0, 0),
+        ""
+      )
+      .then(
+        (value: any) => {
+          editor.edit((builder) => {
+            for (let f of value) {
+              const range = f.range;
+              const str = f.newText;
+              if (str == "") {
+                builder.delete(range);
+              } else {
+                builder.insert(range.start, str);
+              }
+            }
+            r();
+          });
+        },
+        (err) => {
+          console.error(`err:${err}`);
+        }
+      );
+  });
 }
