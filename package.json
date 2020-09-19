@@ -2,6 +2,7 @@
   "name": "i-dart-plugin",
   "displayName": "i_dart_plugin",
   "description": "一个dart的扩展",
+  "publisher": "weoil",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.49.0"
@@ -52,6 +53,12 @@
     "vscode-test": "^1.4.0"
   },
   "dependencies": {
-    "mz": "^2.7.0"
+    "global": "^4.4.0",
+    "mz": "^2.7.0",
+    "vsce": "^1.79.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/weoil/i-dart-plugin-vscode"
   }
 }
